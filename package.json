@@ -29,8 +29,8 @@
     "homebridge": "^1.0.4"
   },
   "dependencies": {
-    "shelljs": "^0.8.4",
-    "simple-git": "^2.4.0"
+		"shelljs": "^0.8.4",
+		"simple-git": "<=3.16.0"
   },
   "bugs": {
     "url": "https://github.com/PilarJ/homebridge-github-backup/issues"
