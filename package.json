@@ -1,39 +1,48 @@
 {
-  "name": "homebridge-github-backup",
-  "version": "1.0.0",
-  "description": "Automatic backup Homebridge configs to Github",
-  "main": "src/index.js",
-  "scripts": {},
-  "author": "Jakub Pilař <pilarjakub@centrum.cz>",
+  "name": "homebridge-git-backup",
+  "version": "2.0.0",
+  "description": "Homebridge plugin to back up configs to any git repository via HTTPS (PAT) or SSH deployment key",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
   "keywords": [
+    "git",
     "github",
+    "gitlab",
+    "gitea",
+    "forgejo",
     "homebridge",
     "homebridge-plugin",
-    "home-automation",
-    "smartbridge"
+    "backup",
+    "home-automation"
   ],
   "engines": {
-    "homebridge": ">=1.0.0"
+    "homebridge": ">=1.6.0",
+    "node": ">=18.0.0"
   },
   "license": "ISC",
   "files": [
     "LICENSE",
-    "src"
+    "dist",
+    "config.schema.json"
   ],
   "repository": {
     "type": "git",
-    "url": "git://github.com/PilarJ/homebridge-github-backup.git"
-  },
-  "devDependencies": {
-    "@types/node": "10.17.19",
-    "homebridge": "^1.0.4"
-  },
-  "dependencies": {
-		"shelljs": "^0.8.4",
-		"simple-git": "<=3.16.0"
+    "url": "git+https://github.com/charlestephen/homebridge-git-backup.git"
   },
   "bugs": {
-    "url": "https://github.com/PilarJ/homebridge-github-backup/issues"
+    "url": "https://github.com/charlestephen/homebridge-git-backup/issues"
   },
-  "homepage": "https://github.com/PilarJ/homebridge-github-backup#readme"
+  "homepage": "https://github.com/charlestephen/homebridge-git-backup#readme",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "homebridge": "^1.8.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "simple-git": "^3.27.0"
+  }
 }
