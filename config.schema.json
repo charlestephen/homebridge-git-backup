@@ -1,0 +1,116 @@
+{
+  "pluginAlias": "GitBackup",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "Git Backup",
+        "required": true
+      },
+      "repositoryUrl": {
+        "title": "Repository URL",
+        "type": "string",
+        "required": true,
+        "placeholder": "https://github.com/user/backup-repo.git",
+        "description": "Full URL of the git repository. Works with GitHub, GitLab, Gitea, Forgejo, or any self-hosted git server."
+      },
+      "connectMethod": {
+        "title": "Connection Method",
+        "type": "string",
+        "default": "https",
+        "oneOf": [
+          { "title": "HTTPS with Personal Access Token", "enum": ["https"] },
+          { "title": "SSH with Deployment Key", "enum": ["ssh"] }
+        ],
+        "required": true
+      },
+      "accessToken": {
+        "title": "Personal Access Token",
+        "type": "string",
+        "description": "Repository-scoped personal access token (PAT) or deploy token. Required for HTTPS connections. The token is injected into the URL and never stored in git history.",
+        "condition": {
+          "functionBody": "return model.connectMethod === 'https' || !model.connectMethod;"
+        }
+      },
+      "sshKeyPath": {
+        "title": "SSH Private Key Path",
+        "type": "string",
+        "placeholder": "/home/homebridge/.ssh/id_rsa",
+        "description": "Absolute path to the SSH private key (deployment key). Leave empty to use the Homebridge user's default key (~/.ssh/id_rsa).",
+        "condition": {
+          "functionBody": "return model.connectMethod === 'ssh';"
+        }
+      },
+      "gitUserName": {
+        "title": "Git Author Name",
+        "type": "string",
+        "required": true,
+        "default": "Homebridge Backup",
+        "description": "Name that will appear as the commit author."
+      },
+      "gitUserEmail": {
+        "title": "Git Author Email",
+        "type": "string",
+        "required": true,
+        "default": "homebridge@localhost",
+        "description": "Email that will appear as the commit author."
+      },
+      "branch": {
+        "title": "Branch",
+        "type": "string",
+        "default": "main",
+        "description": "Branch to push backups to. Created automatically if it does not exist."
+      },
+      "filesToBackup": {
+        "title": "Files to Backup",
+        "type": "array",
+        "required": true,
+        "minItems": 1,
+        "items": {
+          "title": "Path",
+          "type": "string",
+          "placeholder": "/var/lib/homebridge/config.json"
+        },
+        "description": "Absolute paths to files or directories to include. Directory structure is preserved in the repository to avoid filename collisions."
+      },
+      "backupOnStart": {
+        "title": "Backup on Plugin Start",
+        "type": "boolean",
+        "default": false,
+        "description": "Run a backup automatically each time Homebridge starts."
+      }
+    }
+  },
+  "layout": [
+    "name",
+    {
+      "type": "fieldset",
+      "title": "Repository",
+      "expandable": false,
+      "items": ["repositoryUrl", "connectMethod", "accessToken", "sshKeyPath"]
+    },
+    {
+      "type": "fieldset",
+      "title": "Git Identity",
+      "expandable": false,
+      "items": ["gitUserName", "gitUserEmail", "branch"]
+    },
+    {
+      "type": "fieldset",
+      "title": "What to Back Up",
+      "expandable": false,
+      "items": [
+        {
+          "key": "filesToBackup",
+          "type": "array",
+          "items": [{ "key": "filesToBackup[]", "title": "Path" }]
+        }
+      ]
+    },
+    "backupOnStart"
+  ]
+}
