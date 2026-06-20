@@ -1,4 +1,8 @@
-.DS_STORE
+.DS_Store
+src
+node_modules
 tsconfig.json
+.gitattributes
+.npmignore
 .env
 *.log

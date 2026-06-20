@@ -1,39 +1,70 @@
 {
-	"pluginAlias": "GitHubConfigBackup",
-	"pluginType": "platform",
-	"schema": {
-		"type": "object",
-		"properties": {
-			"github_token": {
-				"title": "GitHub Token",
-				"type": "string",
-				"description": "Personal Access Token with repo scope",
-				"minLength": 40
-			},
-			"github_repo": {
-				"title": "GitHub Repository",
-				"type": "string",
-				"description": "Format: owner/repo-name",
-				"pattern": "^[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+$"
-			},
-			"branch": {
-				"title": "Branch",
-				"type": "string",
-				"default": "main"
-			},
-			"backup_interval": {
-				"title": "Backup Interval (minutes)",
-				"type": "integer",
-				"default": 1440,
-				"minimum": 5
-			},
-			"file_path": {
-				"title": "Config File Path",
-				"type": "string",
-				"default": "homebridge-config.json",
-				"description": "Path in repository"
-			}
-		},
-		"required": ["github_token", "github_repo"]
-	}
+  "pluginAlias": "GitBackup",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "Backs up your Homebridge configuration to any Git remote (GitHub, Forgejo, GitLab, self-hosted) on every change and on a schedule.",
+  "footerDisplay": "Powered by [isomorphic-git](https://isomorphic-git.org) - no `git` binary required on the host.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "Git Backup",
+        "required": true
+      },
+      "repository_url": {
+        "title": "Repository URL",
+        "type": "string",
+        "format": "uri",
+        "required": true,
+        "description": "Full HTTPS clone URL, e.g. https://github.com/you/homebridge-backups.git",
+        "placeholder": "https://github.com/you/homebridge-backups.git"
+      },
+      "branch": {
+        "title": "Branch",
+        "type": "string",
+        "default": "main",
+        "description": "Branch to push backups to. The plugin will fast-forward from this branch before each commit."
+      },
+      "git_username": {
+        "title": "Git Username",
+        "type": "string",
+        "default": "git",
+        "description": "Most token-based providers accept any value here (e.g. 'git' for GitHub PATs; the token-owner username for Forgejo/Gitea)."
+      },
+      "git_token": {
+        "title": "Git Token / Password",
+        "type": "string",
+        "required": true,
+        "format": "password",
+        "description": "Personal Access Token, deploy key, or password used for HTTPS authentication. Needs write access to the target repository.",
+        "minLength": 1
+      },
+      "file_path": {
+        "title": "File path in repository",
+        "type": "string",
+        "default": "homebridge-config.json",
+        "description": "Path within the repository where the Homebridge config.json should be written. Subdirectories are created automatically."
+      },
+      "backup_interval": {
+        "title": "Backup interval (minutes)",
+        "type": "integer",
+        "default": 1440,
+        "minimum": 5,
+        "description": "Scheduled backup cadence. The plugin also commits immediately when the Homebridge config changes on disk."
+      },
+      "commit_name": {
+        "title": "Commit author name",
+        "type": "string",
+        "default": "Homebridge Git Backup"
+      },
+      "commit_email": {
+        "title": "Commit author email",
+        "type": "string",
+        "format": "email",
+        "default": "homebridge@localhost"
+      }
+    }
+  }
 }

@@ -1,20 +1,56 @@
 {
-  "name": "homebridge-github-config-backup",
-  "version": "1.0.0",
-  "description": "Automatically backup Homebridge config to GitHub",
+  "name": "homebridge-git-backup",
+  "displayName": "Git Backup",
+  "version": "1.0.1",
+  "description": "Homebridge plugin that backs up your Homebridge configuration to any Git remote (GitHub, Forgejo, GitLab, self-hosted) on every change.",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/charlestephen/homebridge-github-config-backup.git"
+  "author": "charlestephen",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "config.schema.json",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0",
+    "homebridge": "^2.0.0"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && tsc",
+    "watch": "tsc --watch",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "homebridge-plugin",
     "homebridge",
     "backup",
-    "github"
+    "git",
+    "github",
+    "forgejo",
+    "gitlab",
+    "config",
+    "isomorphic-git"
   ],
-  "bugs": {
-    "url": "https://github.com/charlestephen/homebridge-github-config-backup/issues"
+  "dependencies": {
+    "chokidar": "^5.0.0",
+    "isomorphic-git": "^1.38.0"
   },
-  "homepage": "https://github.com/charlestephen/homebridge-github-config-backup#readme"
+  "peerDependencies": {
+    "homebridge": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/charlestephen/homebridge-git-backup.git"
+  },
+  "bugs": {
+    "url": "https://github.com/charlestephen/homebridge-git-backup/issues"
+  },
+  "homepage": "https://github.com/charlestephen/homebridge-git-backup#readme"
 }
