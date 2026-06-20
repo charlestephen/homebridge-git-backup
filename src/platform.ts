@@ -143,17 +143,24 @@ export class GitBackupPlatform implements DynamicPlatformPlugin {
 
     void this.runBackup('startup');
 
-    // Watch the directory that holds config.json, not the file itself.
-    // Homebridge and the Config UI save config.json atomically (write a temp
-    // file, then rename it over the original), which swaps the file's inode.
-    // A watcher bound to the file path loses its target after the first save
-    // and never fires again. depth:0 keeps us out of the git-backup-workdir
-    // subdirectory (so our own commits don't retrigger a backup), and the
-    // filename filter ignores every sibling except config.json.
+    // Watch config.json via its parent directory, but watch ONLY config.json.
+    // - Watching the directory (not the file path) is required because Homebridge
+    //   saves config.json atomically (write temp + rename), swapping the inode;
+    //   a watch bound to the file path goes silent after the first save.
+    // - `ignored` excludes every other entry so we don't open an fs.watch per
+    //   file. The Homebridge storage dir holds many other plugins' state files;
+    //   watching them all exhausts file descriptors (EMFILE) and crashes the
+    //   child bridge. With this, the footprint is one directory watch + config.json.
+    const resolvedDir = path.resolve(configDir);
+    const resolvedConfig = path.resolve(configPath);
     this.watcher = chokidar.watch(configDir, {
       persistent: true,
       ignoreInitial: true,
       depth: 0,
+      ignored: (entry: string): boolean => {
+        const r = path.resolve(entry);
+        return r !== resolvedDir && r !== resolvedConfig;
+      },
       awaitWriteFinish: {
         stabilityThreshold: WATCHER_DEBOUNCE_MS,
         pollInterval: 100,
@@ -166,6 +173,15 @@ export class GitBackupPlatform implements DynamicPlatformPlugin {
     };
     this.watcher.on('add', onConfigEvent);
     this.watcher.on('change', onConfigEvent);
+    // A watcher failure must never take down the child bridge — degrade to
+    // startup + scheduled backups instead of crashing.
+    this.watcher.on('error', (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.log.warn(
+        `Config watcher error (${msg}). Continuing with scheduled backups; ` +
+          'live config-change detection may be disabled until restart.',
+      );
+    });
 
     this.intervalTimer = setInterval(
       () => void this.runBackup('scheduled'),

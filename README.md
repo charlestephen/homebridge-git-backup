@@ -169,6 +169,9 @@ Then in your Homebridge install: `npm link homebridge-git-backup` and restart Ho
 
 ## Changelog
 
+### 2.0.1
+- **Fixed:** `EMFILE: too many open files` crash loop. The config watcher opened a file watch for every entry in the Homebridge storage directory (which holds many other plugins' state files). It now watches only `config.json` — still via the directory, so atomic saves are detected — keeping the footprint to a single directory watch. Watcher errors are now non-fatal (the plugin degrades to scheduled backups instead of crashing the child bridge).
+
 ### 2.0.0
 - **Added:** SSH authentication with deployment keys (`auth_method: "ssh"`), via `simple-git` + `GIT_SSH_COMMAND`. Provide the key inline (`ssh_private_key`) or by path (`ssh_key_path`).
 - **Added:** explicit `auth_method` (`https` | `ssh`) with conditional config-UI fields.
