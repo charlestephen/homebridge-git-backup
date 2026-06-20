@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type {
   API,
@@ -10,12 +11,16 @@ import { APIEvent } from 'homebridge';
 import chokidar, { FSWatcher } from 'chokidar';
 
 import { GitBackupService } from './git-backup.service';
-import { GitBackupConfig } from './interfaces';
+import { GitEngine, GitEngineContext } from './git-engine';
+import { IsomorphicGitEngine } from './isomorphic-git.engine';
+import { SshGitEngine } from './ssh-git.engine';
+import { AuthMethod, GitBackupConfig } from './interfaces';
 import { PLATFORM_NAME } from './settings';
 
 const DEFAULT_INTERVAL_MINUTES = 1440;
 const MINIMUM_INTERVAL_MINUTES = 5;
 const WATCHER_DEBOUNCE_MS = 5000;
+const SSH_KEY_FILENAME = '.git-backup-ssh-key';
 
 export class GitBackupPlatform implements DynamicPlatformPlugin {
   private readonly cfg: GitBackupConfig;
@@ -42,6 +47,10 @@ export class GitBackupPlatform implements DynamicPlatformPlugin {
     // No accessories - this is a service-only platform plugin.
   }
 
+  private authMethod(): AuthMethod {
+    return this.cfg.auth_method === 'ssh' ? 'ssh' : 'https';
+  }
+
   private validate(): boolean {
     if (!this.cfg) {
       this.log.error(`${PLATFORM_NAME}: missing platform config block.`);
@@ -51,16 +60,48 @@ export class GitBackupPlatform implements DynamicPlatformPlugin {
       this.log.error(`${PLATFORM_NAME}: "repository_url" is required.`);
       return false;
     }
-    if (!this.cfg.git_token) {
-      this.log.error(`${PLATFORM_NAME}: "git_token" is required.`);
-      return false;
+
+    if (this.authMethod() === 'ssh') {
+      if (!this.cfg.ssh_private_key && !this.cfg.ssh_key_path) {
+        this.log.error(`${PLATFORM_NAME}: SSH auth requires "ssh_private_key" or "ssh_key_path".`);
+        return false;
+      }
+      if (/^https?:\/\//i.test(this.cfg.repository_url)) {
+        this.log.warn(
+          `${PLATFORM_NAME}: auth_method is "ssh" but repository_url looks like HTTPS. ` +
+            'Use an SSH URL, e.g. git@github.com:you/homebridge-backups.git',
+        );
+      }
+    } else {
+      if (!this.cfg.git_token) {
+        this.log.error(`${PLATFORM_NAME}: HTTPS auth requires "git_token".`);
+        return false;
+      }
+      if (/^(git@|ssh:\/\/)/i.test(this.cfg.repository_url)) {
+        this.log.warn(
+          `${PLATFORM_NAME}: auth_method is "https" but repository_url looks like SSH. ` +
+            'Use an HTTPS URL, e.g. https://github.com/you/homebridge-backups.git',
+        );
+      }
     }
+
     return true;
+  }
+
+  /** Resolve a private-key file path: use ssh_key_path, or materialize the inline key with 0600 perms. */
+  private resolveSshKeyPath(): string {
+    if (this.cfg.ssh_key_path) return this.cfg.ssh_key_path;
+
+    const keyFile = path.join(this.api.user.storagePath(), SSH_KEY_FILENAME);
+    let key = (this.cfg.ssh_private_key ?? '').replace(/\r\n/g, '\n');
+    if (!key.endsWith('\n')) key += '\n'; // OpenSSH rejects keys without a trailing newline
+    fs.writeFileSync(keyFile, key, { mode: 0o600 });
+    fs.chmodSync(keyFile, 0o600); // enforce perms even if the file already existed
+    return keyFile;
   }
 
   private start(): void {
     const branch = this.cfg.branch ?? 'main';
-    const username = this.cfg.git_username ?? 'git';
     const filePath = this.cfg.file_path ?? 'homebridge-config.json';
     const commitName = this.cfg.commit_name ?? 'Homebridge Git Backup';
     const commitEmail = this.cfg.commit_email ?? 'homebridge@localhost';
@@ -72,17 +113,29 @@ export class GitBackupPlatform implements DynamicPlatformPlugin {
 
     const workDir = path.join(this.api.user.storagePath(), 'git-backup-workdir');
 
-    this.service = new GitBackupService({
+    const ctx: GitEngineContext = {
       repositoryUrl: this.cfg.repository_url,
       branch,
-      username,
-      token: this.cfg.git_token,
+      workDir,
       filePath,
       commitName,
       commitEmail,
-      workDir,
       log: this.log,
-    });
+    };
+
+    let engine: GitEngine;
+    if (this.authMethod() === 'ssh') {
+      engine = new SshGitEngine(ctx, { keyPath: this.resolveSshKeyPath() });
+      this.log.info(`${PLATFORM_NAME} using SSH (deployment key) auth.`);
+    } else {
+      engine = new IsomorphicGitEngine(ctx, {
+        username: this.cfg.git_username ?? 'git',
+        token: this.cfg.git_token ?? '',
+      });
+      this.log.info(`${PLATFORM_NAME} using HTTPS (token) auth.`);
+    }
+
+    this.service = new GitBackupService(engine, ctx);
 
     const configPath = this.api.user.configPath();
     const configDir = path.dirname(configPath);

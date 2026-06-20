@@ -2,8 +2,8 @@
   "pluginAlias": "GitBackup",
   "pluginType": "platform",
   "singular": true,
-  "headerDisplay": "Backs up your Homebridge configuration to any Git remote (GitHub, Forgejo, GitLab, self-hosted) on every change and on a schedule.",
-  "footerDisplay": "Powered by [isomorphic-git](https://isomorphic-git.org) - no `git` binary required on the host.",
+  "headerDisplay": "Backs up your Homebridge configuration to any Git remote (GitHub, Forgejo, Gitea, GitLab, self-hosted) on every change and on a schedule. Choose HTTPS (token) or SSH (deployment key) authentication.",
+  "footerDisplay": "HTTPS uses [isomorphic-git](https://isomorphic-git.org) — no `git` binary required. SSH uses a deployment key via the host's `git` + `ssh` (not available in the official Homebridge Docker image).",
   "schema": {
     "type": "object",
     "properties": {
@@ -16,30 +16,62 @@
       "repository_url": {
         "title": "Repository URL",
         "type": "string",
-        "format": "uri",
         "required": true,
-        "description": "Full HTTPS clone URL, e.g. https://github.com/you/homebridge-backups.git",
+        "description": "HTTPS clone URL (https://host/you/repo.git) for token auth, or SSH URL (git@host:you/repo.git) for deployment-key auth.",
         "placeholder": "https://github.com/you/homebridge-backups.git"
       },
       "branch": {
         "title": "Branch",
         "type": "string",
         "default": "main",
-        "description": "Branch to push backups to. The plugin will fast-forward from this branch before each commit."
+        "description": "Branch to push backups to. The plugin fast-forwards from this branch before each commit."
+      },
+      "auth_method": {
+        "title": "Authentication Method",
+        "type": "string",
+        "default": "https",
+        "required": true,
+        "oneOf": [
+          { "title": "HTTPS — Personal Access Token", "enum": ["https"] },
+          { "title": "SSH — Deployment Key", "enum": ["ssh"] }
+        ],
+        "description": "HTTPS needs no git binary (works in Docker). SSH requires git + ssh on the host."
       },
       "git_username": {
         "title": "Git Username",
         "type": "string",
         "default": "git",
-        "description": "Most token-based providers accept any value here (e.g. 'git' for GitHub PATs; the token-owner username for Forgejo/Gitea)."
+        "description": "Most token-based providers accept any value (e.g. 'git' for GitHub PATs; the token-owner username for Forgejo/Gitea).",
+        "condition": {
+          "functionBody": "return model.auth_method !== 'ssh';"
+        }
       },
       "git_token": {
         "title": "Git Token / Password",
         "type": "string",
-        "required": true,
         "format": "password",
-        "description": "Personal Access Token, deploy key, or password used for HTTPS authentication. Needs write access to the target repository.",
-        "minLength": 1
+        "description": "Required for HTTPS auth. Personal Access Token or password with write access to the target repository.",
+        "condition": {
+          "functionBody": "return model.auth_method !== 'ssh';"
+        }
+      },
+      "ssh_key_path": {
+        "title": "SSH Private Key Path",
+        "type": "string",
+        "placeholder": "/var/lib/homebridge/.ssh/backup_deploy_key",
+        "description": "Preferred for SSH: path to an existing private key file on the host. Keeps the key OUT of the backed-up config. If set, it takes precedence over the inline key below.",
+        "condition": {
+          "functionBody": "return model.auth_method === 'ssh';"
+        }
+      },
+      "ssh_private_key": {
+        "title": "SSH Private Key (inline)",
+        "type": "string",
+        "format": "password",
+        "description": "Alternative to a key path: paste the full private key (OpenSSH/PEM, including the BEGIN/END lines). NOTE: this value lives in config.json and will therefore appear in the backed-up config — prefer a key path, or a dedicated backup-only deploy key.",
+        "condition": {
+          "functionBody": "return model.auth_method === 'ssh';"
+        }
       },
       "file_path": {
         "title": "File path in repository",

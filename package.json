@@ -1,7 +1,7 @@
 {
   "name": "homebridge-git-backup",
   "displayName": "Git Backup",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "description": "Homebridge plugin that backs up your Homebridge configuration to any Git remote (GitHub, Forgejo, GitLab, self-hosted) on every change.",
   "license": "MIT",
   "author": "charlestephen",
@@ -36,7 +36,8 @@
   ],
   "dependencies": {
     "chokidar": "^5.0.0",
-    "isomorphic-git": "^1.38.0"
+    "isomorphic-git": "^1.38.0",
+    "simple-git": "^3.27.0"
   },
   "peerDependencies": {
     "homebridge": "^2.0.0"
