@@ -20,6 +20,7 @@ import { PLATFORM_NAME } from './settings';
 const DEFAULT_INTERVAL_MINUTES = 1440;
 const MINIMUM_INTERVAL_MINUTES = 5;
 const WATCHER_DEBOUNCE_MS = 5000;
+const WATCHER_POLL_MS = 30000;
 const SSH_KEY_FILENAME = '.git-backup-ssh-key';
 
 export class GitBackupPlatform implements DynamicPlatformPlugin {
@@ -29,6 +30,7 @@ export class GitBackupPlatform implements DynamicPlatformPlugin {
   private intervalTimer?: NodeJS.Timeout;
   private inFlight = false;
   private pending = false;
+  private polling = false;
 
   constructor(
     public readonly log: Logging,
@@ -138,50 +140,10 @@ export class GitBackupPlatform implements DynamicPlatformPlugin {
     this.service = new GitBackupService(engine, ctx);
 
     const configPath = this.api.user.configPath();
-    const configDir = path.dirname(configPath);
-    const configName = path.basename(configPath);
 
     void this.runBackup('startup');
 
-    // Watch config.json via its parent directory, but watch ONLY config.json.
-    // - Watching the directory (not the file path) is required because Homebridge
-    //   saves config.json atomically (write temp + rename), swapping the inode;
-    //   a watch bound to the file path goes silent after the first save.
-    // - `ignored` excludes every other entry so we don't open an fs.watch per
-    //   file. The Homebridge storage dir holds many other plugins' state files;
-    //   watching them all exhausts file descriptors (EMFILE) and crashes the
-    //   child bridge. With this, the footprint is one directory watch + config.json.
-    const resolvedDir = path.resolve(configDir);
-    const resolvedConfig = path.resolve(configPath);
-    this.watcher = chokidar.watch(configDir, {
-      persistent: true,
-      ignoreInitial: true,
-      depth: 0,
-      ignored: (entry: string): boolean => {
-        const r = path.resolve(entry);
-        return r !== resolvedDir && r !== resolvedConfig;
-      },
-      awaitWriteFinish: {
-        stabilityThreshold: WATCHER_DEBOUNCE_MS,
-        pollInterval: 100,
-      },
-    });
-    const onConfigEvent = (changedPath: string): void => {
-      if (path.basename(changedPath) === configName) {
-        void this.runBackup('config change');
-      }
-    };
-    this.watcher.on('add', onConfigEvent);
-    this.watcher.on('change', onConfigEvent);
-    // A watcher failure must never take down the child bridge — degrade to
-    // startup + scheduled backups instead of crashing.
-    this.watcher.on('error', (err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.log.warn(
-        `Config watcher error (${msg}). Continuing with scheduled backups; ` +
-          'live config-change detection may be disabled until restart.',
-      );
-    });
+    this.setupConfigWatch(configPath);
 
     this.intervalTimer = setInterval(
       () => void this.runBackup('scheduled'),
@@ -192,6 +154,85 @@ export class GitBackupPlatform implements DynamicPlatformPlugin {
       `${PLATFORM_NAME} watching ${configPath}; ` +
         `scheduled every ${intervalMinutes} minute(s).`,
     );
+  }
+
+  /**
+   * Primary watcher: a single inotify watch on the storage directory, scoped to
+   * config.json via `ignored`. Watching the directory (not the file path) lets us
+   * survive Homebridge's atomic write+rename saves; `ignored` keeps the footprint
+   * to one directory watch so we don't open an fs.watch per sibling file (EMFILE).
+   */
+  private setupConfigWatch(configPath: string): void {
+    const configDir = path.dirname(configPath);
+    const resolvedDir = path.resolve(configDir);
+    const resolvedConfig = path.resolve(configPath);
+
+    const watcher = chokidar.watch(configDir, {
+      persistent: true,
+      ignoreInitial: true,
+      depth: 0,
+      ignored: (entry: string): boolean => {
+        const r = path.resolve(entry);
+        return r !== resolvedDir && r !== resolvedConfig;
+      },
+      awaitWriteFinish: { stabilityThreshold: WATCHER_DEBOUNCE_MS, pollInterval: 100 },
+    });
+    this.watcher = watcher;
+    this.wireWatcher(watcher, configPath);
+  }
+
+  /**
+   * Fallback watcher used when inotify is exhausted (EMFILE/ENOSPC): poll
+   * config.json directly. Polling uses periodic fs.stat — no inotify instances,
+   * no held descriptors — and re-stat'ing the path survives atomic renames.
+   */
+  private fallBackToPolling(configPath: string): void {
+    this.polling = true;
+    if (this.watcher) {
+      void this.watcher.close();
+      this.watcher = undefined;
+    }
+    const poller = chokidar.watch(configPath, {
+      persistent: true,
+      ignoreInitial: true,
+      usePolling: true,
+      interval: WATCHER_POLL_MS,
+      awaitWriteFinish: { stabilityThreshold: WATCHER_DEBOUNCE_MS, pollInterval: 100 },
+    });
+    this.watcher = poller;
+    this.wireWatcher(poller, configPath);
+    this.log.info(`Now polling ${configPath} every ${Math.round(WATCHER_POLL_MS / 1000)}s for changes.`);
+  }
+
+  private wireWatcher(watcher: FSWatcher, configPath: string): void {
+    const configName = path.basename(configPath);
+    const onConfigEvent = (changedPath: string): void => {
+      if (path.basename(changedPath) === configName) {
+        void this.runBackup('config change');
+      }
+    };
+    watcher.on('add', onConfigEvent);
+    watcher.on('change', onConfigEvent);
+    watcher.on('error', (err: unknown) => {
+      const code = (err as NodeJS.ErrnoException)?.code;
+      const msg = err instanceof Error ? err.message : String(err);
+      // inotify/FD exhaustion on the efficient watcher -> switch to polling once.
+      if (!this.polling && (code === 'EMFILE' || code === 'ENOSPC')) {
+        this.log.warn(
+          `Config watcher hit ${code} — the host is out of inotify watches/instances. ` +
+            'Falling back to polling config.json. For the efficient inotify watcher, raise ' +
+            'fs.inotify.max_user_instances and fs.inotify.max_user_watches on the host.',
+        );
+        this.fallBackToPolling(configPath);
+        return;
+      }
+      // Never fatal: a dead watcher just means we rely on scheduled backups.
+      if (this.polling) {
+        this.log.debug(`Watcher error after fallback (${msg}).`);
+      } else {
+        this.log.warn(`Config watcher error (${msg}). Continuing with scheduled backups.`);
+      }
+    });
   }
 
   private async runBackup(trigger: string): Promise<void> {

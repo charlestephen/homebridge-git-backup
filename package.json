@@ -1,7 +1,7 @@
 {
   "name": "homebridge-git-backup",
   "displayName": "Git Backup",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Homebridge plugin that backs up your Homebridge configuration to any Git remote (GitHub, Forgejo, GitLab, self-hosted) on every change.",
   "license": "MIT",
   "author": "charlestephen",

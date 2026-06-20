@@ -146,6 +146,14 @@ Backup runs are serialized; if a change arrives mid-backup it's coalesced and ru
 | `Backup failed … Permission denied (publickey)` (SSH) | The deploy key isn't authorized for the repo, or has no write access. Re-add the **public** key as a write-enabled deploy key. |
 | `Backup failed … PushRejectedNonFastForward` | The remote has commits the plugin's tree doesn't. The plugin never force-pushes — use a single-writer backup repo, or delete `<storage>/git-backup-workdir` to re-clone. |
 | `Clone failed … Initializing empty repo for first push` | Expected for a brand-new, empty backup repo. The first commit creates the branch. |
+| `Config watcher hit EMFILE/ENOSPC` | The host ran out of inotify watches/instances — a host-wide limit shared by all your plugins, not specific to this one. The plugin auto-falls back to polling, so backups keep working. To restore the efficient watcher, raise the host limits (below). |
+
+**Raising inotify limits (Linux host):** if you see the `EMFILE`/`ENOSPC` warning, the host's inotify limits are exhausted across all your plugins. Raise them and restart Homebridge:
+
+```bash
+echo -e "fs.inotify.max_user_instances=512\nfs.inotify.max_user_watches=524288" | sudo tee /etc/sysctl.d/60-homebridge-inotify.conf
+sudo sysctl --system
+```
 
 Set Homebridge's log level to debug to see per-trigger backup activity (`startup`, `config change`, `scheduled`).
 
@@ -168,6 +176,9 @@ npm link
 Then in your Homebridge install: `npm link homebridge-git-backup` and restart Homebridge. Use `npm run watch` for incremental rebuilds.
 
 ## Changelog
+
+### 2.0.2
+- **Added:** automatic fallback to **polling** when the inotify watcher can't start (`EMFILE`/`ENOSPC`). On Homebridge hosts running many plugins, the per-user inotify limit can be exhausted host-wide; the plugin now polls `config.json` (no inotify, no held descriptors) instead of losing live change detection. The efficient inotify watcher is still preferred — raise the host limits (see [Troubleshooting](#troubleshooting)) to use it.
 
 ### 2.0.1
 - **Fixed:** `EMFILE: too many open files` crash loop. The config watcher opened a file watch for every entry in the Homebridge storage directory (which holds many other plugins' state files). It now watches only `config.json` — still via the directory, so atomic saves are detected — keeping the footprint to a single directory watch. Watcher errors are now non-fatal (the plugin degrades to scheduled backups instead of crashing the child bridge).
